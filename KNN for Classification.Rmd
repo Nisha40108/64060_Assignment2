@@ -1,0 +1,172 @@
+---
+title: "KNN for Classification"
+author: "Nisha Chaurasia"
+date: "2023-02-17"
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+---
+#The goal is to use k-NN to predict whether a new customer will accept a loan offer. This will serve as the basis for the design of a new campaign. 
+
+
+##loading required library
+```{r}
+rm(list = ls()) #cleaning the environment
+library(readr)
+library(caret)
+library(knitr)
+library(class)
+library(ggplot2)
+library(dplyr)
+```
+##Import Data "UniversalBank.csv"
+```{r}
+library(readr)
+Bankdata1 <- read.csv("C:/Users/Chaur/OneDrive/Desktop/FML/Assignment_2_KNN/UniversalBank.csv")
+head(Bankdata1)
+```
+##Understand the bank data structure
+```{r}
+str(Bankdata1)
+summary(Bankdata1)
+```
+##Cleaning and Preparing the data set
+###(1)Remove Zipcode 
+###(2)Converting Personal_loan to factor because the customer response to the last personal loan campaign is "Personal_Loan" variable and want to covert into category 
+###(3)creating the dummy variables for Education and converting them to factor
+```{r}
+Bankdata2 <-Bankdata1[,-c(1,5)]
+Bankdata2$Personal_Loan =as.factor(Bankdata2$Personal_Loan)
+class(Bankdata2$Personal_Loan)
+Education1 <- ifelse(Bankdata2$Education == 1, 1,0)
+Education1 <- as.factor(Education1)
+Education2 <- ifelse(Bankdata2$Education == 2, 1,0)
+Education2 <- as.factor(Education2)
+Education3 <- ifelse(Bankdata2$Education == 3, 1,0)
+Education3 <- as.factor(Education3)
+Bankdata3 <- data.frame(Bankdata2,Education1 = Education1,Education2 = Education2, Education3 = Education3)
+Bankdata4 <- Bankdata3[,-6]
+```
+
+##Partitioning the data into training (60%) and validation (40%) sets Also showed the summary statistics of both train and test data set.  
+```{r}
+Train_Index = createDataPartition(Bankdata4$Personal_Loan,p=0.6, list = FALSE)
+Train_df =Bankdata4[Train_Index,]
+Validation_df=Bankdata4[-Train_Index,]
+nrow(Train_df)
+summary(Train_df)
+nrow(Validation_df)
+summary(Validation_df)
+```
+
+
+##normalization of the data.
+```{r}
+Norm_model <- preProcess(Train_df, method = c("center", "scale"))
+training_norm<-predict(Norm_model,Train_df)
+head(training_norm)
+validation_norm<-predict(Norm_model,Validation_df)
+head(validation_norm)
+```
+
+#creating the test data set and test normalization
+```{r}
+Test <-data.frame(Age=40,Experience=10,Income=84,Family=2,CCAvg=2,Mortgage=0,Securities.Account=0,CD.Account=0,Online=1,CreditCard=1,Education1=0,Education2=1,Education3=0)
+head(Test)
+test_norm<-predict(Norm_model,Test)
+head(test_norm)
+
+```
+
+#knn algorithm in dataset
+```{r}
+Train_predictors<-training_norm[,-7]
+Train_label<-training_norm[,7]
+valid_predictors<-validation_norm[,-7]
+Valid_label<-validation_norm[,7]
+Predict_test_label<-knn(Train_predictors,test_norm,cl=Train_label,k=1)
+Predict_test_label
+#Customer will not accept the offer because the value of K = 0
+
+```
+#Finding the best value for k by training the model by using train function. Also customizing the grid search  
+```{r}
+set.seed(550)
+searchGrid <- expand.grid(k=seq(1:30))
+model <- train(Personal_Loan~.,training_norm,method="knn", tuneGrid = searchGrid)
+model
+best_k <- model$bestTune[[1]]
+#K = 1 will give the best value for K 
+```
+#the confusion matrix using both the functions
+```{r}
+library(gmodels)
+Validation_data_best_k<-predict(model,validation_norm[,-7])
+confusionMatrix(Validation_data_best_k ,Valid_label)
+CrossTable(Validation_data_best_k,Valid_label)
+```
+
+
+#Classifying the customer using the best k
+```{r}
+Prediction_new<-knn(Train_predictors,test_norm,cl=Train_label,k=best_k)
+Prediction_new
+#Customer using the new K value will also not accept the loan offer because again K = 0
+```
+
+#Repartition the data, this time into training, validation, and test sets (50% : 30% : 20%).
+```{r}
+Test_Index_N = createDataPartition(Bankdata4$Personal_Loan,p=0.2, list=FALSE) # 20% reserved for Test
+Test_Data_N = Bankdata4[Test_Index_N,]
+TrainAndValid_Data = Bankdata4[-Test_Index_N,] # Validation and Training data is rest
+Train_Index_N = createDataPartition(TrainAndValid_Data$Personal_Loan,p=25/40, list=FALSE) # 50% of remaining data as training
+Train_Data_N = TrainAndValid_Data[Train_Index_N,]
+Validation_Data_N = TrainAndValid_Data[-Train_Index_N,] # rest as validation
+nrow(Train_Data_N)
+summary(Train_Data_N)
+nrow(Validation_Data_N)
+summary(Validation_Data_N)
+nrow(Test_Data_N)
+summary(Test_Data_N)
+```
+
+##normalization of all 3 datas.
+```{r}
+Norm_model_N <- preProcess(Train_Data_N, method = c("center", "scale"))
+training_norm_N<-predict(Norm_model_N,Train_Data_N)
+head(training_norm_N)
+validation_norm_N<-predict(Norm_model_N,Validation_Data_N)
+head(validation_norm_N)
+Test_norm_N<-predict(Norm_model_N,Test_Data_N)
+head(Test_norm_N)
+```
+#Classifying the customer from all 3 set (training,validation and testing) using the best k
+```{r}
+Train_predictors_N <-training_norm_N[,-7]
+Train_label_N<-training_norm_N[,7]
+valid_predictors_N<-validation_norm_N[,-7]
+Valid_label_N<-validation_norm_N[,7]
+Test_predictors_N<-Test_norm_N[,-7]
+Test_label_N<-Test_norm_N[,7]
+training_prediction_N <-knn(Train_predictors_N,Train_predictors_N,cl=Train_label_N,k=best_k)
+head(training_prediction_N)
+validation_prediction_N <-knn(Train_predictors_N,valid_predictors_N,cl=Train_label_N,k=best_k)
+head(validation_prediction_N)
+Test_prediction_N <-knn(Train_predictors_N,Test_predictors_N,cl=Train_label_N,k=best_k)
+head(Test_prediction_N)
+
+```
+#the confusion matrix using both the functions for all 3 datasets Training, Validation and Test
+```{r}
+confusionMatrix(training_prediction_N,Train_label_N)
+CrossTable(training_prediction_N,Train_label_N)
+
+confusionMatrix(validation_prediction_N,Valid_label_N)
+CrossTable(validation_prediction_N,Valid_label_N)
+
+confusionMatrix(Test_prediction_N,Test_label_N)
+CrossTable(Test_prediction_N,Test_label_N)
+```
+##Compare the confusion matrix of the test set with that of the training and validation sets.
+##The confusion matrix were created for the trianing set, validation set, and the test set. Firstly, as always expected for KNN models, the training set confusion matrix shows 100% accuracy with k=1 because the values are already seen by the model. The validation set confusion matrix shows an overall accuracy of 95.47% and a high sensitivity of 98.89% but a low specificity of 63.19%. This confusion matrix reveals that the model is not as accurate in correctly predicting customers who will accept the loan (out of the 144 customers who accepted the loan, the model only predicted that 91 of those customers would accept the loan, hence giving a low specificity of 63.19%). On the other hand, this model is very accurate in correctly predicting customers who will Not accept the loan, hence giving a high sensitivity. The test set confusion matrix shows an overall accuracy of 95% and a sensitivity of 99% and a specificity of 57.29%. This test set confusion matrix trends very similarly to the validation set confusion matrix which is a good thing. 
